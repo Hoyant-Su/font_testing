@@ -1,0 +1,872 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+
+\usepackage[a4paper,top=2cm,bbottom=2cm,left=2.5cm,right=2.5cm,marginparwidth=2cm]{geometry}
+
+\usepackage{xeCJK}
+\usepackage[colorlinks,linkcolor=black]{hyperref}
+\setmainfont{xl.ttf}
+\setCJKsansfont{xl.ttf}
+
+\usepackage{float}
+
+\usepackage{amsmath,amsthm,amssymb,amsfonts}
+\usepackage{graphicx}
+
+
+\usepackage{listings}
+\usepackage{circuitikz}
+\usepackage{subfigure}
+\usepackage{tikz}
+
+\usepackage{xcolor}
+
+
+\lstset{ %
+  language=Python,                % the language of the code
+  basicstyle=\footnotesize,           % the size of the fonts that are used for the code
+  numbers=left,                   % where to put the line-numbers
+  numberstyle=\tiny\color[rgb]{0.4,0.2,0.2},  % the style that is used for the line-numbers
+  stepnumber=2,                   % the step between two line-numbers. If it's 1, each line 
+                                  % will be numbered
+  numbersep=10pt,                  % how far the line-numbers are from the code
+  backgroundcolor=\color{white},      % choose the background color. You must add \usepackage{color}
+  showspaces=false,               % show spaces adding particular underscores
+  showstringspaces=false,         % underline spaces within strings
+  showtabs=false,                 % show tabs within strings adding particular underscores
+  %frame=single,                   % adds a frame around the code
+  rulecolor=\color{black},        % if not set, the frame-color may be changed on line-breaks within not-black text (e.g. commens (green here))
+  tabsize=2,                      % sets default tabsize to 2 spaces
+  captionpos=b,                   % sets the caption-position to bottom
+  breaklines=true,                % sets automatic line breaking
+  breakatwhitespace=false,        % sets if automatic breaks should only happen at whitespace
+  title=\lstname,                   % show the filename of files included with \lstinputlisting;
+                                  % also try caption instead of title
+  keywordstyle=\color[rgb]{0.9,0.5,0.5},          % keyword style
+  commentstyle=\color[rgb]{0.4,0.3,0.9},       % comment style
+  stringstyle=\color[rgb]{0.35,0.85,0.5},         % string literal style
+  escapeinside={\%*}{*)},            % if you want to add LaTeX within your code
+  morekeywords={*,...}               % if you want to add more keywords to the set
+}
+
+
+
+
+% xetex/xelatex 字体设定宏包
+ 
+
+\title{font_testing}
+\author{20300720002 }
+\date{March 2022}
+
+\begin{document}
+
+
+
+
+
+
+\section{实验目的}
+了解V4L驱动的基本原理，了解Linux内核视频设备的驱动原理及统一API操作基础
+；
+
+掌握数字图像的基本构成，掌握离散化图像处理方法，学会利用图像直方图对图像做定量统计分析
+；
+
+掌握霍夫变换理论，通过fswebcam,mplayer及计算机视觉库opencv，编程实现图像的处理及并实现机器视觉。
+
+
+
+\section{实验原理}
+
+\subsection{V4L驱动
+}
+
+\subsubsection{V4L基本概念}
+全称：Video4Linux（Video for Linux）
+Video4Linux(简V4L)是Linux中关于视频设备的内核驱动，是Linux内核中关于视频设备的子系统。
+Video4Linux能针对视频设备的应用程序（视频驱动）编程提供一系列统一的接口函数。
+使得应用程序可以使用统一的API操作不同的视频设备，极大地简化了视频系统的开发和维护。
+\subsubsection{V4L工作原理及驱动架构}
+V4L为应用程序定义统一的文件操作结构，诸如中断的处理实现，内存映射\footnote{使用内存映射文件处理存储于磁盘上的文件时，将不必再对文件执行I/O操作，使得内存映射文件在处理大数据量的文件时能起到相当重要的作用}功能以及对I/O通道的控制接口函数ioct1的实现\footnote{接口函数就是类中的公有函数，如函数SendMessage()}等。
+
+V4L定义的数据结构主要有
+
+\begin{lstlisting}
+                            struct video_capability grab_cap;
+                            struct video_picture grab_pic;
+                            struct video_mmap grab_buf;
+                            struct video_mbuf grab_vm；      
+\end{lstlisting}
+
+其依次实现获取摄像头的基本信息，例如设备名称、支持的最大最小分辨率、信号源信息的；获取设备采集图像的各种属性，如亮度、色调、对比度、色度、深度等；其中video\_mmap用于内存映射；video\_mbuf实现对mmap帧信息的利用,包括帧的大小、最多支持的帧数、每帧相对基址的偏移。
+
+
+%%%考虑有时间画张图？%%
+\subsubsection{程序调用V4L流程}
+通过调用以上方法，实现程序采集过程：1.初始化设备，采用系统调用函数grab\_fd打开设备文件，读取struct video\_capability中有关摄像头的信息；2.图像及视频截取，可利用read()及mmap()两种方法实现，read()直接通过内核缓冲区读取数据，而mmpa()通过内存映射的方式来访问。\footnote{早期V4L有许多缺陷，Bill Dirks等人对其进行重新设计，取名为Video for Linux 2(V4L2)，最早出现于Linux2.5.x。应用程序V4L编程实际多指V4L2。}
+
+\subsection{数字图像}
+\subsubsection{数字图像基本概念}
+数字图像是由模拟图像数字化得到的、以像素为基本元素的、可以用数字计算机或数字电路存储和处理的图像。\footnote{数字图像由数组或矩阵表示。}
+
+
+
+\subsubsection{图像的离散化}
+
+特点：数字图像的光照位置和强度都是离散的。
+
+连续图像：人眼直接感受到的图像。
+
+数字图像：把连续的图像数字化、离散化之后的图像，它是对连续图像的一种近似。
+
+\subsubsection{数字图像基本构成及名词解释}
+\textbf{像素（pixel）：}图像的最小单位，平面图像由水平和垂直均匀分布的点（像素）构成。
+
+\textbf{分辨率（resolution）：} 指图像中每单位长度    所包含的像素或点的数目，对平面图像而言，即水平垂直方向各有像素的个数。
+例：1024x768
+
+分辨率越高，图像越清晰，图像文件所需的磁    盘空间也越大，编辑和处理所需的时间也越长。像素越小，单位长度所包含的像素数据就越多，分辨率也就越高。
+
+
+\textbf{位图（bitmap）：}通过记录每一个像素值来存储和表达的图像。
+
+\textbf{灰度图像（Gray image）：}每个像素的值(0-255)表示灰阶（亮度），使用一个字节来保存（1byte = 8bit）。
+
+灰阶代表了由最暗到最亮之间不同亮度的层次级别。这中间层级越多，所能够呈现的画面效果也就越细腻。
+
+对一个n-bit灰度图而言，能表现的亮度层次为$2^{n}$。例如，二值图只能表示两个亮度层次，即2灰阶；2-bit灰度图能表示$2^{2}$个亮度层次，即4灰阶；8-bit灰度图能表示$2^{8}$个亮度层次，即256灰阶。
+%%%%鹦鹉图片等%%
+
+
+多个具有不同灰阶的像素点形成一个矩阵，这个矩阵显示的效果就是一幅图像。
+
+\textbf{彩色图像（真彩色，true-color）：}每个像素有RGB三个值(分别都为0-255)，混合产生不同的色彩。即每个像素值都分成R、G、B三个基色分量，每个基色分量直接决定其基色的强度。
+
+
+
+
+
+\subsection{图像直方图}
+
+\subsubsection{图像直方图基本概念}
+图像直方图（Image Histogram）是用以表示数字图像中亮度分布的直方图，标绘了图像中每个亮度值的像素数。这种直方图中，横坐标（intensity）的左侧(0)为纯黑、较暗的区域，而右侧(255)为较亮、纯白的区域。因此一张较暗图片的直方图中的数据多集中于左侧和中间部分，而整体明亮、只有少量阴影的图像则相反。
+
+\subsubsection{直方图的意义}
+直方图是图像中像素强度分布的图形表达方式。
+直方图对每一个灰度强度值所具有的像素个数做出统计。
+
+\subsubsection{直方图特征统计量bin}
+    bin的数值为从图像对应数据\footnote{数据包含梯度、方向、色彩或任何其他特征。}中计算出的特征统计量，是直方图中常用概念，可译为 “直条” 或 “组距”。直方图获得的是数据分布的统计图。通常直方图的维数要低于原始数据。
+
+直方图是对数据的统计集合，并将统计结果分布于一系列预定义的 bins 中。
+
+假设有一个矩阵包含一张图像的信息（灰度值 0 - 255），既然已知数字的范围包含 256 个值，于是可以按一定规律将这个范围分割成子区域，表示如下：
+\begin{center}
+$$
+[0,255]=[0,15]\bigcup[16,31]\bigcup  \cdots\bigcup  [240,255]
+$$
+$$
+range=bin_{1}\bigcup bin_{2}\bigcup   \cdots \bigcup bin_{n}
+$$
+\end{center}
+
+\subsubsection{直方图示例}
+
+
+
+
+
+图像中数字值代表灰阶值，不同数字值代表的灰阶值不同。将图像等分为16小块，即像素为4×4。
+
+
+
+
+
+图示为简单4阶直方图，其直方图显示与上图像素分布对应。其中，横坐标k代表图像的灰阶，纵坐标h(k)表示图中第k灰阶像素点的个数。
+
+
+
+
+
+\subsubsection{直方图均衡化Histogram Equalization}
+
+直方图均衡化是通过拉伸像素强度分布范围来增强图像对比度的一种方法。
+
+\textbf{[基本原理]}
+
+均衡化实现将图像中像素个数多的灰度值（即对画面起主要作用的灰度值）进行展宽，而对像素个数少的灰度值（即对画面不起主要作用的灰度值）进行归并，从而增大对比度，使图像清晰，达到增强的目的。
+
+
+以上面的直方图为例, 你可以看到像素主要集中在中间的一些强度值上. 直方图均衡化要做的就是 拉伸 这个范围. 见下面左图: 绿圈圈出了 少有像素分布其上的 强度值。 对其应用均衡化后, 得到了中间图所示的直方图。 均衡化的图像见下面右图。
+
+
+
+
+均衡化指的是把一个分布 (给定的直方图) 映射 到另一个分布 (一个更宽更统一的强度值分布), 所以强度值分布会在整个范围内展开.
+要想实现均衡化的效果, 映射函数应该是一个累积分布函数 (cdf) . 对于直方图H(i) , 它的累积分布H'(i) 是:
+要使用其作为映射函数, 我们必须对最大值
+     为255 (或者用图像的最大强度值) 的累积分
+     布H'(i)进行归一化. 同上例, 累积分布函数为：
+
+
+
+
+\subusection{图像阈值处理
+}
+图像阈值处理是一种简化图像的方法。通过阈值处理，图像像素值取值单一，图像内容减少。
+图像阈值处理有许多实现方法，可根据实际情况选择合适的方法，下面仅介绍“简单阈值”处理
+ 
+
+
+
+\subsection{霍夫变换
+Hough Transform}
+霍夫变换（Hough Transform）是图像处理领域内从图像中检测几何形状的基本方法之一。经扩展的霍夫变换可以进行任意形状物体的识别，例如圆和椭圆。
+
+\textbf{[霍夫变换基本原理]}
+
+霍夫变换运用两个坐标空间之间的变换，将在一个空间中具有相同形状的曲线或直线映射到另一个坐标空间的一个点上形成峰值，从而把检测任意形状的问题转化为统计峰值问题。
+
+\textbf{Hough直线检测}的基本原理在于利用点与线的对偶性，在直线检测任务中，图像空间中的直线与参数空间中的点是一一对应的，参数空间中的直线与图像空间中的点也是一一对应的。由此可以得出：
+
+1）图像空间中的每条直线在参数空间中都对应着单独一个点来表示；
+
+2）图像空间中的直线上任何一部分线段在参数空间对应的是同一个点。
+
+因此，Hough直线检测算法就是把在图像空间中的直线检测问题转换到参数空间中对点的检测问题，通过在参数空间里寻找峰值来完成直线检测任务。
+
+\subsubsection{笛卡尔坐标系的局限性}
+在参数空间的选择中，如果直接选用笛卡尔直角坐标系进行霍夫变换，则无法在参数空间直接表示特殊直线：x=k(k为常数)上的点列。
+
+因为在图像空间中，直线x=k上分布的点的横坐标为一常值，将该点列分别变化至参数空间的直线，则得到的参数空间中的直线是互相平行的，因此，x=k上的点列无法在参数空间中交于一点，即无峰值产生，因此无法进行检测。
+
+\subsubsection{极坐标空间的选取}
+为了能够表示图像空间中的任意一条直线，需引入极坐标作为参数空间，假定r为极径，$\theta$为极角，则对图像空间中一点任(x,y)，有正弦曲线$r=xcos\theta+ysin\theta$与之对应。
+
+\textbf{[空间转换推导]}
+假定图像空间中某直线如图所示
+
+\begin{center}
+    \begin{tikzpicture}
+    \draw[thick](0,0)--(5,0);
+    \draw[thick](0,0)--(0,5);
+    \draw[thick](0,5)--(5,5);
+    \draw[thick](5,5)--(5,0);
+    \draw[-,green](0,0)--(2.5,2.5);
+    \draw[-](1,4)--(4,1);
+    \node[Large](a)at(1,1.6){r};
+    \node(b)at(0.6,0.18){$\theta$};
+    \fill(2.5,2.5) circle (2pt);
+    \fill(1,4) circle (2pt);
+    \fill(3,2) circle (2pt);
+    \node(d)at(2.6,2.9){(p,q)};
+    \node(e)at(3.3,2.3){($x_{1}$,$y_{1}$)};
+    \node(f)at(1,4.3){($x_{2}$,$y_{2}$)};
+    \draw[-](2.45,2.45)-|(2.6,2.4);
+    \draw(0.3,0) arc(0:45:0.3);
+    \end{tikzpicture}
+\end{center}
+
+将图像空间中的坐标点采用极坐标变换，取直线上与极点垂直的一点为(p,q)，则有坐标变换式
+
+$$
+(p,q)=(rcos\theta,rsin\theta)
+$$
+
+易证，原直线斜率为
+
+
+
+\begin{equation*}
+    tan(\frac{\pi}{2}+\theta)=\frac{-cos\theta}{sin\theta}
+\end{equation*}
+
+取直线上任一点(x,y)，则斜率为
+\begin{equation*}
+    \frac{y-p}{x-q}=\frac{y-rsin\theta}{x-rcos\theta}
+\end{equation*}
+
+根据上式，得
+
+$$
+    r=\textbf{x}cos\theta+\textbf{y}sin\theta
+$$
+
+
+\subsection{计算机视觉库OpenCV}
+\subsubsection{OpenCV基本概念}
+OpenCV是一个基于BSD许可（开源）发行的跨平台计算机视觉软件库，可以运行在Linux、Windows、Android和Mac OS操作系统上。 它轻量级而且高效——由一系列 C 函数和少量 C++ 类构成，提供了Python、Ruby、MATLAB等语言的接口，实现了图像处理和计算机视觉方面的很多通用算法。
+
+OpenCV致力于标准的应用程序接口API(即应用编程接口)。
+
+\subsubsection{基于OpenCV的图像阈值处理}
+图像阈值处理是一种简化图像的方法。通过阈值处理，图像像素值取值单一，图像内容减少。
+
+阈值处理能够剔除图像内像素值高于阈值或者低于阈值得像素点。例如，对二值化阈值处理，假设设定阈值为150，将图像内所有像素值大于150的像素点的值设为255;将图像内所有像素值小于150的像素点的值设为0。
+
+图像阈值处理有许多实现方法，可根据实际情况选择合适的方法。
+
+
+\textbf{阈值分割的类型}
+\begin{center}
+    
+\begin{tabular}{|p{7.2cm}|p{2.7cm}|p{2.7cm}|}
+   \hline
+   分割类型& 灰度值小于阈值  & 灰度值大于阈值  \\\hline
+    THRESH\_BINARY(二值化阈值处理) & value=max(255)&  value=min(0)  \\\hline
+      THRESH\_BINARY\_INV(反二值化阈值处理)& value=min(0)&value=max(255)    \\\hline
+       THRESH\_TRUNC(截断阈值化处理)&value=threshold &   unchanged  \\\hline
+        THRESH\_TOZERO(低阈值零处理)&unchanged & value=min(0)    \\\hline
+       THRESH\_TOZERO\_INV(高阈值零处理)  &value=min(0) & unchanged   \\\hline
+\end{tabular}
+
+\end{center}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+\section{实验器材}
+树莓派4B，USB摄像头Logitech Webcam C270
+，杜邦线若干，鼠标，键盘，终端。
+
+\section{实验内容}
+\subsection{硬件连接}
+将USB摄像头Logitech Webcam C270的USB线与树莓派接口相连。
+
+\textbf{[确认正确连接和识别]}
+
+
+\subsection{软件及库安装}
+
+\subsubsection{安装fswebcam}
+
+安装指令：\$ sudo apt-get install fswebcam
+
+
+
+\subsubsection{安装OpenCV}
+
+方法一：终端命令安装
+\$ sudo apt-get update
+\$ sudo apt-get install python3-opencv
+
+方法二：点击终端树莓派图标 →“Preferences”→“Add / Remove Software”进入软件中心，搜索“opencv”，勾选“Python bindings for the computer vision library”，点击“Apply”。
+
+检查是否安装成功并查看当前版本：
+     \$ python3
+     >> import cv2
+     >> cv2.\_\_version\_\_
+     
+     
+\subsubsection{安装mplayer}
+安装指令：\$ sudo apt-get install mplayer
+
+
+
+\subsection{实验一：照片的拍摄、显示、及保存}
+\subsubsection{利用fswebcam实现照片的拍摄、显示、及保存}
+拍摄一张照片：
+
+     \$ fswebcam [<options>] <filename>
+     
+     例：\$ fswebcam --no-banner -S 10 -r 640*480 image.jpg
+     
+\textbf{[语句分析]}
+
+    \textbf{ --no-banner：}禁用图片下方信息横幅
+     
+  \textbf{   -S：}skip，跳过的帧数（实测第一次调用fswebcam必须跳过一些帧才
+     能得到有效图像）
+     
+    \textbf{ -r：}resolution，分辨率
+ 
+
+终端默认路径是 /home/pi/      保存的图片在那里。
+
+\subsubsection{利用cv模块实现照片的拍摄、显示、及保存}
+\textbf{[代码内容]}
+\begin{lstlisting}
+    #!/usr/bin/env python
+    # -*- coding: UTF-8 -*-
+    
+    import cv2
+    
+    cap = cv2.VideoCapture(0)  # 获取摄像头句柄,只连接一个摄像头时参数写0即可
+    i = 1  # 照片序号
+    
+    while True:
+        ret, frame = cap.read()  # 读一帧
+        cv2.imshow("display", frame)  # 显示
+        key = cv2.waitKey(1) & 0xFF  # 检测键盘,最长等待1ms (注意0表示永远而非0ms)
+        if key == ord('p'):
+            cv2.imwrite("image"+str(i)+".jpg", frame)  # 按p时保存图片
+            i = i + 1
+        if key == ord('q'):
+            break  # 按q时退出
+    
+    cap.release()  # 释放摄像头
+    cv2.destroyAllWindows()  # 关闭所有显示窗体
+
+
+\end{lstlisting}
+
+\textbf{[代码分析]}
+
+\textbf{step1：计算机视觉库导入}
+
+导入图像处理及计算机视觉库cv2。
+\\\hspace*{\fill}\\
+\indent\textbf{step2：获取摄像头句柄或读取视频}
+
+VideoCapture()方法中，参数0表示默认为笔记本的内置第一个摄像头。\footnote{VideoCapture方法也可以读取已有的视频。读取已有的视频时，参数应改为视频所在路径路径，例如：cap=cv2.VideoCapture('video.mp4')}
+\\\hspace*{\fill}\\
+\indent\textbf{step3：读取图像，并返回布尔值}
+
+ret,frame=cap.read()实现按帧读取视频，返回值ret是布尔型，正确读取则返回True，读取失败或读取视频结尾则会返回False。frame为每一帧的图像。
+\\\hspace*{\fill}\\
+\indent\textbf{step4：显示图像}
+
+cv2.imShow()函数可以在窗口中显示图像。该窗口和图像的原始大小自适应（自动调整到原始尺寸）。
+\\\hspace*{\fill}\\
+\indent\textbf{step5：键盘输入指令}
+
+key = cv2.waitKey(1)中waitKey()方法即等待键盘输入，参数1表示延时1ms切换到下一帧，参数为0表示显示当前帧，相当于暂停（表示永远）。
+
+当程序读取键盘输入符‘p’时，imwrite方法实现写的操作，本例中将读取的照片以image+序号的形式存储为jpg格式，并置于相同目录下。
+
+照片保存后，计数器加1，重新进入循环，并进行下一条键盘指令的判断。
+
+当程序读取键盘输入符'q'时，循环终止。
+\\\hspace*{\fill}\\
+\indent\textbf{step6：实例对象的释放}
+
+程序运行完毕，释放实例对象cap，并关闭窗体。
+
+\subsection{实验二：视频的拍摄、显示、及保存}
+\subsubsection{利用mplayer
+实现视频的拍摄、显示、及保存}
+播放摄像头实时拍摄内容：
+     \$ sudo mplayer tv://
+
+播放视频文件：
+     \$ mplayer <filename>
+
+
+\subsubsection{OpenCV: 摄像、显示、保存视频
+}
+
+
+\textbf{[实验准备—库安装]}
+\begin{lstlisting}
+    #!/usr/bin/env python
+    # -*- coding: UTF-8 -*-
+    
+    import cv2
+    import time
+    
+    cap = cv2.VideoCapture(0)  # 获取摄像头句柄,只连接一个摄像头时参数写0即可
+    out = cv2.VideoWriter("movie.avi", cv2.VideoWriter_fourcc('X', 'V', 'I', 'D'), 17, (640, 480))  # 打开/新建视频文件用于写入,帧率=17,帧尺寸=640x480
+    
+    while True:
+        t = time.time()
+        ret, frame = cap.read()  # 读一帧
+        cv2.imshow("frame", frame)  # 显示
+        out.write(frame)  # 写入视频文件
+        key = cv2.waitKey(1) & 0xFF  # 检测键盘,最长等待1ms
+        if key == ord('q'):
+            break  # 按q时结束
+        print (time.time() - t)
+    
+    cap.release()  # 释放摄像头
+    out.release()  # 关闭视频文件
+    cv2.destroyAllWindows()  # 关闭所有显示窗体
+
+
+\end{lstlisting}
+
+\textbf{[代码分析]}
+
+\textbf{step1：导入模块}
+
+导入树莓派模块及计时模块time。
+
+
+
+\\ \hspace*{\fill} \\
+\indent\textbf{step2：获取摄像头句柄并创建视频流写入对象}
+
+第7行代码将cap设定为内置第一个摄像头的标签，即获取了内置第一个摄像头句柄。
+
+第8行代码创建了视频流写入对象out，VideoWriter\_fourcc\footnote{fourcc意为四字符代码（Four-Character Codes）}为视频编解码器，17为帧播放速率，（640，480）表示视频帧大小。
+
+
+以下列出四字符代码（Four-Character Codes）常用参数及顺序\footnote{本实验中，采用MPEG-4编码类型，文件名后缀为avi。}
+
+\begin{center}
+    \begin{tabular}{|p{2.4cm}|p{2cm}|p{1.8cm}|}
+    \hline
+     四字符参数 &编码类型 &文件名后缀  \\\hline
+        'I', '4', '2', '0'  & YUV& avi \\\hline
+         'P', 'I', 'M', 'I'  & MPEG-1& avi \\\hline
+         'X', 'V', 'I', 'D'   & MPEG-4& avi \\\hline
+          'T', 'H', 'E', 'O'   &Ogg Vorbis &ogv  \\\hline
+           'F', 'L', 'V', '1'  & Flash& flv \\\hline
+    \end{tabular}
+\end{center}
+ 
+
+\textbf{step3：帧读取及写入}
+
+第12-14行代码实现帧读取，并在终端窗口实时显示当前帧，同时将当前帧写入视频流写入对象。
+
+第18行的代码实现在终端显示每帧读取所用时间。
+\\ \hspace*{\fill} \\
+\indent\textbf{step4：键盘输入指令}
+
+当循环接收到键盘指令'q'时，终止循环。
+
+\\\hspace*{\fill}\\
+\indent\textbf{step5:实例对象的释放}
+
+程序运行完成后，释放摄像头cap，关闭视频流写入对象，并关闭所有窗体。
+\\\hspace*{\fill}\\
+\indent\textbf{回放保存的视频文件}
+
+在命令行中输入\$ sudo apt-get install vlc，并用vlc打开所在代码目录下的avi文件。
+
+
+
+\subsection{实验三：直方图的绘制}
+\subsubsection{单通道直方图}
+\begin{lstlisting}
+                        from matplotlib import pyplot as plt
+                        img = cv2.imread('pic.jpeg')
+                        plt.hist(img.ravel(), 256, [0, 256]);
+                        plt.show()
+\end{lstlisting}
+\indent\textbf{[代码分析]}
+
+利用matplotlib库绘制直方图，第二行的代码plt.hist为直方图绘制代码，形如
+\begin{lstlisting}
+                         plt.hist(x, bins=None, range=None)
+\end{lstlisting}
+
+\textbf{x}: 作直方图所要用的数据，必须是一维数组；多维数组可以先进行扁平化再作图。
+
+\textbf{bins: }直方图的柱数，即要分的组数，默认为10。
+
+\textbf{range：}元组(tuple)或None；剔除较大和较小的离群值，给出全局范围；如果为None，则默认为(x.min(), x.max())；即x轴的范围。
+
+本例中，利用函数ravel()将导入图像img的像素拉成一维数组，进而利用hist函数绘制直方图。
+
+
+\subsubsection{多通道直方图}
+\begin{lstlisting}
+                        from matplotlib import pyplot as plt
+                        img = cv2.imread('pic.jpeg')
+                        color = ('b','g','r')
+                        for i,col in enumerate(color):
+                            histr = cv2.calcHist([img],[i],None,[256],[0,256])
+                            plt.plot(histr,color = col)
+                            plt.xlim([0,256])
+                        plt.show()
+\end{lstlisting}
+
+\indent\textbf{[代码分析]}
+
+cv2.calcHist()为直方图统计函数，形如
+\begin{lstlisting}
+            cv2.calcHist(images,channels,mask,histSize,ranges[,hist[,accumulate])
+\end{lstlisting}
+
+\indent\textbf{images：}输入图像，传入时应该用中括号[]括起来。
+
+\textbf{channels：}传入图像的通道，如果输入图像是灰度图像，值为[0]；如果是彩色图像，传入参数可以为[0]，[1]，[2]，分别对应B，G，R，使用时需用中括号[]。
+
+\textbf{mask：}掩膜图像。none表示对整幅图的统计；构造掩膜用以统计部分图像。
+
+\textbf{histSize：}灰度级BIN的个数，使用时需用中括号[]。
+
+\textbf{ranges：}像素值范围，通常[0,256]。
+
+\textbf{hist：}输出的 narray 类型，shape 是 256 x 1。
+
+\textbf{accumulate：}是否积累。
+
+本例中，列表color的元素分别为蓝、绿、红三色，for循环将利用i,col依次为histr标签赋参数，具体地，读取图像pic.jpeg；通过i,col对列表color遍历，传入参数channel=0,1,2；掩膜设定为无；直条数为256；选定像素值范围为0至256。
+
+通过plt.plot函数，按col对列表color的遍历结果，对应作图。
+
+
+\subsection{实验四：直方图均衡化}
+
+\begin{lstlisting}
+                            import cv2
+                            import numpy as np
+                            from matplotlib import pyplot as plt
+                            
+                            img1 = cv2.imread('lena.jpg')
+                            img = cv2.cvtColor(img1,cv2.COLOR_BGR2GRAY)
+                            cv2.imwrite("gray.jpeg",img)
+                            
+                            equ = cv2.equalizeHist(img)
+                            pic_equ = np.hstack([img,equ])
+                            cv2.imwrite("hist_equ.jpeg",pic_equ)
+                            cv2.imshow("Histogram Equalization",pic_equ)
+                            cv2.waitKey(100)
+                            
+                            plt.subplot(121)
+                            plt.hist(img.ravel(),256,[0,256])
+                            plt.subplot(122)
+                            plt.hist(equ.ravel(),256,[0,256])
+                            plt.show()
+
+\end{lstlisting}
+
+\textbf{[代码分析]}
+
+cvtColor为颜色空间转换函数，
+形如
+\begin{lstlisting}
+                                    cv2.cvtColor(p1,p2)
+\end{lstlisting}
+
+\textbf{p1}：需要转换的图片，\textbf{p2}：转换成的格式。
+本例中，p1为'lena.jpg',p2为cv2.COLOR\_BGR2GRAY。 
+
+其中，cv2.COLOR\_BGR2GRAY 实现将BGR格式转换成灰度图片。
+cv2.equalizeHist(img)为直方图均衡化函数，将要均衡化的原图像\footnote{原图像要求是灰度图像}作为参数传入，返回值即为均衡化后的图像。
+
+np.hstack()为沿水平方向堆叠数组函数\footnote{与之相对应的竖直堆叠函数为np.vstack()}。
+本例中利用np.hstack([img,equ])语句实现图img及图equ的并排输出。
+\\\hsapce*{\fill}\\
+\indent\textbf{均衡化:cv2.equalizeHist}
+
+均衡化的原理在于映射函数的使用。映射函数为一个累积分布函数(cdf)。对于直方图H(i) , 其累积分布H'(i)可用如下式表示:
+$$
+H'(i)=\sum_{0\leqslant j \leq i}H(j)
+$$
+
+ 另外，需对最大值
+     为255 (或者用图像的最大强度值) 的累积分
+     布H'(i)进行归一化。
+     
+     映射过程可用如下等式表示:
+     equalized(x,y)=H'(src(x,y))
+
+
+\subsection{霍夫直线变换处理图像}
+\begin{lstlisting}
+    #!/usr/bin/python
+    # -*- coding: utf-8 -*- 
+    import cv2
+    import math
+    #读取图片
+    img=cv2.imread("pic.png",cv2.IMREAD_COLOR)
+    
+    #转为灰度图像
+    imggray=cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)
+    
+    #高斯去噪，（3,3）表示高斯核大小
+    imggray=cv2.GaussianBlur(imggray,(3,3),0)
+    
+    #二值化，80为阈值
+    ret,imgbinary = cv2.threshold(imggray,80,255,cv2.THRESH_BINARY_INV)
+    
+    #边缘提取，50,150两个阈值比值应在1：2与1：3之间
+    #edges=cv2.Canny(imggray, 100, 200, apertureSize=3)
+    
+    #统计概率霍夫线变换
+    #threshold 检测一条直线所需的最少极坐标曲线交点数
+    threshold=500
+    #minLineLength 组成一条直线的最小长度
+    minLineLength=500
+    #maxLineGap 两条直线为同一条直线的最大间隙
+    maxLineGap=100
+    lines = cv2.HoughLinesP(imgbinary,1,math.pi/180,threshold,minLineLength,maxLineGap)
+    
+    #在原图上绘制直线
+    
+    for l in lines:
+    	for x1,y1,x2,y2 in l:
+    		cv2.line(img,(x1,y1),(x2,y2),(0,255,0),2)
+    
+    for x1,y1,x2,y2 in lines[0]:
+    	cv2.line(img,(x1,y1),(x2,y2),(0,255,0),1)
+    
+    #显示图片
+    #注：在图片窗口弹出后，键入任意键关闭窗口并结束程序
+    cv2.imshow("img", img)
+    cv2.waitKey()
+    cv2.destroyAllWindows()
+   
+\end{lstlisting}
+
+\textbf{[代码分析]}
+
+\textbf{step1：}“简单阈值”处理函数
+形如
+\begin{lstlisting}
+                        ret,dst=cv2.threshold(src,thresh, maxval,type)
+\end{lstlisting}
+
+为简单阈值函数，参数分别为
+
+\textbf{src：}输入图像
+\textbf{dst：}输出图像	ret：返回值
+
+\textbf{thresh：}阈值。对于8bit灰阶图像，取值范围为0至255
+
+\textbf{maxval：}像素最大值。取值范围同thresh，具体行为取决于type
+
+\textbf{type：}阈值类型
+本例中，
+\begin{lstlisting}
+            ret,imgbinary = cv2.threshold(imggray,80,255,cv2.THRESH\_BINARY\_INV)
+\end{lstlisting}
+
+即输入图像标签设为ret,输出图像标签设为imgbinary；阈值设为80；像素最大值设为255；并采用反二值化阈值处理\footnote{实验中，测量对象为障碍跑道黑线，设定类型为反二值化阈值处理有利于霍夫直线变换寻交点}。
+
+\textbf{step2:}霍夫直线变换
+代码块22至27行实现对图像的霍夫直线变换，HoughLinesP()函数的一般式形如
+\begin{lstlisting}
+    cv2.HoughLinesP(image,outputArray lines,rho,theta,threshold,minLineLength=0,maxLineGap=0)
+\end{lstlisting}
+
+\textbf{image：}待处理图像
+
+\textbf{outputArray lines：}输出的霍夫直线数
+
+\textbf{rho：}确定极径
+
+\textbf{theta：}确定极角
+
+\textbf{threshold：}检测一条直线所需的最少极坐标曲线交点数（即当大于等于阈值设定时，画出对应点）
+
+\textbf{minLineLength：}组成一条直线的最小长度（默认值为0）
+
+\textbf{maxLineGap：}两条直线为同一条直线的最大间隙（默认值为0）
+
+本例中，
+cv2.HoughLinesP(imgbinary,1,math.pi/180,threshold,minLineLength,maxLineGap)
+
+即设定待处理图片为已写入的二值化图像imgbinary；每次输出直线条数为1；角度设定为极坐标；阈值设定为500；直线最小长度设定为500；两直线最大间隙设定为100。
+
+\textbf{step3：}绘制直线
+
+将霍夫变换的结果存入列表lines，利用函数cv2.line在指定图像上确定绘制起始点与终止点，并设参数为绘制颜色（对应RGB0-255）及线条宽度thickness（默认值为1）。
+
+本例中，cv2.line(img,(x1,y1),(x2,y2),(0,255,0),1)
+
+即源图像（画线对象）为标签为img的对应图像，起始点终止点分别为(x1,y1),(x2,y2)，线条颜色为"绿"，线条宽度设为1。
+
+\section{实验操作记录与现象分析}
+\subsection{实验一：照片的拍摄、显示、及保存}
+\subsubsection{实验操作记录}
+
+
+\textbf{step1:fswebcam及opencv的安装}
+
+在终端命令提示符中依次输入\$ sudo apt-get install mplayer及\$ sudo apt-get update,
+\$ sudo apt-get install python3-opencv，在python编程界面输入import cv2，无报错信息返回，即表明已安装完成。
+\\ \hspace*{\fill} \\ 
+\indent\textbf{step2:拍照测试}
+
+在终端命令提示符输入 \$ sudo mplayer tv://，观察到终端窗口出现摄像画面，旋转摄像头，发现效果良好。
+
+在终端命令提示符输入\$ fswebcam --no-banner -S 10 -r 640*480 testing.jpg，在文件夹中找到图片文件testing.jpg，点击打开，如图所示：
+%%%放个图%%%
+
+
+
+将python程序camera\_picture打开，并将输出名格式修改为
+\begin{lstlisting}
+            cv2.imwrite("testing"+str(i)+".jpg", frame)
+\end{lstlisting}
+
+点击运行。在文件夹中找到图片文件testing1.jpg，点击打开，如图所示：
+%%%%放个图
+
+
+\subsection{实验二：视频的拍摄、显示、及保存}
+\subsubsection{实验操作记录}
+\indent\textbf{step1：mplayer的安装}
+
+在终端命令提示符中依次输入\$ sudo apt-get install mplayer，\$ sudo mplayer tv://，此时观察到终端显示屏上出现视频。
+\\ \hspace*{\fill}\\
+\indent\textbf{step2：运行拍摄指令及程序}
+数秒后，在命令提示符中输入\$ mplayer test.mp3，弹出已存入的视频文件。
+
+
+为了清除视频文件播放过程中产生的输出内容，在命令行中输入mplayer fr.mp3  > /dev/null  2>&1，实现命令清除。
+
+将python程序camera\_movie打开，并将输出名格式修改为
+\begin{lstlisting}
+     out = cv2.VideoWriter("movie_test.avi", cv2.VideoWriter_fourcc('X', 'V', 'I', 'D'), 17, (640, 480))
+\end{lstlisting}
+点击运行。在文件夹中找到图片文件movie\_test.avi，点击打开，效果如下所示：\footnote{视频另置于文件夹下}
+%%%%放个视频
+%%
+%\begin{figure}[ht]
+%\includemovie[
+%poster,
+%text={\small(Loading %Circle-m-increase3.mp4)}
+%]{6cm}{6cm}{e.mp4}
+%\end{figure}
+
+
+
+
+
+\subsubsection{实验现象记录与分析}
+可以发现，灰度图的输出结果局部的对比度是不一样的，通过查阅资料可知，COLOR\_BGR2GRAY的换算原理为：GRAY = B * 0.114 + G * 0.587 + R * 0.299。当而R,G,B相等时，图像会显示为灰值；而相差较大时颜色会偏向于较大的基色。
+
+在弹出的第二个窗口中对比直方图处理结果发现，未经过均衡化处理的直方图像素亮度集中于100-200之间；在0-20附近存在较小的峰值，为拍摄过程中反光所致。
+
+均衡化处理后，直方图像素范围展宽，宽度从0-255均有分布，且观察到两侧分布点个数较少，50及175附近各有一个峰值。整体像素亮度分布趋于平稳。
+
+
+\subsection{实验四：霍夫直线变换处理图像}
+\subsubsection{实验操作记录}
+将python程序HoughLine打开，并设定读入图像名为
+\begin{lstlisting}
+              img=cv2.imread("testing1.png",cv2.IMREAD_COLOR)
+\end{lstlisting}
+
+初值设定：threshold=250，
+
+minLineLength=500，
+
+maxLineGap=100，
+
+点击终端程序运行，观察到窗口弹出结果如下所示：
+
+%%%fangtu
+
+\subsubsection{实验现象记录与分析}
+观察到障碍跑道的黑色线条区域显著分布有绿色线条，且基本保持在理想范围。
+
+但绿色线条仍未能全部覆盖跑道（未覆盖部分主要集中在边缘），猜想为绘制线条所示阈值对结果产生影响。
+
+为了验证假设的正确性，保持直线最小长度为500，最大间隙为100不变，修改霍夫变化的参数阈值，使之从0开始逐渐增大，直到终端运行程序，弹出'NoneType'字样，即表明阈值已到达上限，lines列表中无匹配点用以画图。
+
+实验组图如下所示：
+
+\subsubsection{实验现象图}
+
+\end{document}
+
+
+
+
